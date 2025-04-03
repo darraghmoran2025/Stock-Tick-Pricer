@@ -1,0 +1,145 @@
+import yfinance as yf
+import matplotlib.pyplot as plt
+import pandas as pd
+from datetime import datetime, timedelta
+import argparse
+
+def fetch_stock_data(ticker, period="1y"):
+    """
+    Fetch historical stock data using yfinance
+    
+    Parameters:
+    ticker (str): Stock ticker symbol
+    period (str): Time period to fetch (e.g., "1d", "1mo", "1y", "max")
+    
+    Returns:
+    pandas.DataFrame: Historical stock data
+    """
+    stock = yf.Ticker(ticker)
+    history = stock.history(period=period)
+    return history
+
+def calculate_moving_averages(data, windows=[20, 50, 200]):
+    """
+    Calculate moving averages for the given windows
+    
+    Parameters:
+    data (pandas.DataFrame): Stock price data
+    windows (list): List of window sizes for moving averages
+    
+    Returns:
+    pandas.DataFrame: Original data with moving averages added
+    """
+    df = data.copy()
+    for window in windows:
+        df[f'MA{window}'] = df['Close'].rolling(window=window).mean()
+    return df
+
+def plot_stock_data(data, ticker, show_volume=True, moving_averages=None):
+    """
+    Plot stock price data with optional volume and moving averages
+    
+    Parameters:
+    data (pandas.DataFrame): Stock price data
+    ticker (str): Stock ticker symbol
+    show_volume (bool): Whether to show volume in the plot
+    moving_averages (list): List of moving average windows to plot
+    """
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Plot close price
+    ax.plot(data.index, data['Close'], label=f'{ticker} Close', linewidth=2)
+    
+    # Plot moving averages if specified
+    if moving_averages:
+        for ma in moving_averages:
+            if f'MA{ma}' in data.columns:
+                ax.plot(data.index, data[f'MA{ma}'], label=f'{ma}-day MA', alpha=0.7)
+    
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Price ($)')
+    ax.set_title(f'{ticker} Stock Price History')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    
+    # Add volume subplot if requested
+    if show_volume:
+        ax2 = ax.twinx()
+        ax2.bar(data.index, data['Volume'], alpha=0.3, color='gray')
+        ax2.set_ylabel('Volume')
+        
+    plt.tight_layout()
+    return fig
+
+def compare_stocks(tickers, period="1y", normalize=True):
+    """
+    Compare multiple stocks over the same period
+    
+    Parameters:
+    tickers (list): List of stock ticker symbols
+    period (str): Time period to fetch
+    normalize (bool): Whether to normalize prices to the starting point
+    
+    Returns:
+    matplotlib.figure.Figure: Figure with the comparison plot
+    """
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    for ticker in tickers:
+        data = fetch_stock_data(ticker, period)
+        prices = data['Close']
+        
+        if normalize:
+            # Normalize to the first day's price
+            prices = prices / prices.iloc[0] * 100
+        
+        ax.plot(prices.index, prices, label=ticker, linewidth=2)
+    
+    ax.set_xlabel('Date')
+    if normalize:
+        ax.set_ylabel('Normalized Price (%)')
+        ax.set_title(f'Normalized Stock Price Comparison')
+    else:
+        ax.set_ylabel('Price ($)')
+        ax.set_title(f'Stock Price Comparison')
+    
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    plt.tight_layout()
+    return fig
+
+def main():
+    parser = argparse.ArgumentParser(description='Stock Price Tracker')
+    parser.add_argument('tickers', type=str, help='Stock ticker symbols (comma-separated for multiple)')
+    parser.add_argument('--period', type=str, default='1y', help='Time period (e.g., 1d, 1mo, 1y, max)')
+    parser.add_argument('--no-volume', action='store_true', help='Hide volume data')
+    parser.add_argument('--moving-averages', type=str, help='Moving average windows (comma-separated, e.g., 20,50,200)')
+    parser.add_argument('--compare', action='store_true', help='Compare multiple stocks')
+    parser.add_argument('--no-normalize', action='store_true', help='Do not normalize prices when comparing')
+    
+    args = parser.parse_args()
+    
+    tickers = [ticker.strip().upper() for ticker in args.tickers.split(',')]
+    
+    # Handle moving averages
+    ma_windows = None
+    if args.moving_averages:
+        ma_windows = [int(ma.strip()) for ma in args.moving_averages.split(',')]
+    
+    # Compare multiple stocks
+    if args.compare and len(tickers) > 1:
+        fig = compare_stocks(tickers, args.period, not args.no_normalize)
+        plt.show()
+    else:
+        # Process single stock or multiple stocks individually
+        for ticker in tickers:
+            data = fetch_stock_data(ticker, args.period)
+            
+            if ma_windows:
+                data = calculate_moving_averages(data, ma_windows)
+                
+            fig = plot_stock_data(data, ticker, not args.no_volume, ma_windows)
+            plt.show()
+
+if __name__ == "__main__":
+    main()
